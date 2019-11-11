@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
 	csvFilename := flag.String("csv", "problems.csv", "a csv file in the format of 'question, answer'")
+	timeLimit := flag.Int("limit", 30, "the time limit for the quiz in seconds")
 	flag.Parse()
 
 	file, err := os.Open(*csvFilename)
@@ -21,16 +23,34 @@ func main() {
 	check(err, fmt.Sprintf("Failed to parse provided csv file"))
 
 	// lines is a 2d array => [[5+5 10] [1+1 2]]
+	// want to turn them into array of problem types => [{q:5+5, a:10} {q:1+1, a:2]]
 	problems := parseLines(lines)
 
 	numCorrect := 0
 
+	// start timer
+	// NewTimer creates a new Timer that will send a message over its channel once time has expired
+	timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
+
 	for i, prob := range problems {
-		fmt.Printf("Problem #%d: %s = \n", i+1, prob.q)
-		var answer string
-		fmt.Scanf("%s\n", &answer) // create pointer to answer
-		if answer == prob.a {
-			numCorrect++
+		fmt.Printf("Problem #%d: %s = ", i+1, prob.q)
+		answerCh := make(chan string)
+		go func() {
+			var answer string
+			fmt.Scanf("%s\n", &answer) // create pointer to answer
+			answerCh <- answer
+		}()
+
+		select {
+		// if we get a message from the timer channel, stop the program
+		case <-timer.C:
+			fmt.Printf("\nYou scored %d out of %d.\n", numCorrect, len(problems))
+			return
+		// if we get a message from the answer channel, check it
+		case answer := <-answerCh:
+			if answer == prob.a {
+				numCorrect++
+			}
 		}
 	}
 
@@ -83,3 +103,12 @@ func check(err error, msg string) {
 // gets rid of all leading and trailing spaces, so good for this program
 // but not for ones that would take in a sentence
 // https://ukiahsmith.com/blog/fmt-scanf-introduction/
+
+// https://www.golang-book.com/books/intro/10
+// A goroutine is a function that is capable of running concurrently with other functions.
+// To create a goroutine we use the keyword go followed by a function invocation.
+// Channels provide a way for two goroutines to communicate with one another and synchronize their execution.
+// The <- (left arrow) operator is used to send and receive messages on the channel.
+// c <- "ping" means send "ping"
+// msg := <- c means receive a message and store it in msg.
+// Go has a special statement called select which works like a switch but for channels.
